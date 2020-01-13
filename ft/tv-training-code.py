@@ -2,16 +2,103 @@
 # http://pytorch.org/tutorials/intermediate/torchvision_tutorial.html
 
 import os
-import numpy as np
-import torch
-from PIL import Image
+import time
 
+from absl import app, flags
+import numpy as np
+from PIL import Image
+import torch
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 from engine import train_one_epoch, evaluate
 import utils
 import transforms as T
+
+flags.DEFINE_string(
+    "label_file_path",
+    "../data/labels.txt",
+    "Path to the file containing the category labels.",
+)
+
+flags.DEFINE_string(
+    "local_image_dir", "../data/images", "Local directory of the image files to label."
+)
+
+flags.DEFINE_string(
+    "local_annotation_dir",
+    "../data/annotations",
+    "Local directory of the image annotations",
+)
+
+flags.DEFINE_string(
+    "local_manifest_dir",
+    "../data/manifests/",
+    "Local directory of the annotated image manifests",
+)
+
+flags.DEFINE_string(
+    "s3_bucket_name", None, "S3 bucket to retrieve images from and upload manifest to."
+)
+
+flags.DEFINE_string("s3_image_dir", "data/images/", "Prefix of the s3 image objects.")
+
+flags.DEFINE_string(
+    "s3_annotation_dir",
+    "data/annotations/",
+    "Prefix of the s3 image annotation objects",
+)
+flags.DEFINE_string(
+    "s3_manifest_dir",
+    "data/manifests/",
+    "Prefix of the s3 image annotation manifest objects",
+)
+
+
+class ODDataSet(object):
+    def __init__(self, root, transforms):
+        self.root = root
+        self.transforms = transforms
+
+        self.imgs = list(sorted(os.listdir(os.path.join(root, "images"))))
+        self.annotations = list(sorted(os.listdir(os.path.join(root, "annotations"))))
+
+    def __getitem__(self, idx):
+        # load images ad masks
+        img_path = os.path.join(self.root, "PNGImages", self.imgs[idx])
+        img = Image.open(img_path).convert("RGB")
+
+        num_objs = len(obj_ids)
+        boxes = []
+        for i in range(num_objs):
+            pos = np.where(masks[i])
+            xmin = np.min(pos[1])
+            xmax = np.max(pos[1])
+            ymin = np.min(pos[0])
+            ymax = np.max(pos[0])
+            boxes.append([xmin, ymin, xmax, ymax])
+
+        boxes = torch.as_tensor(boxes, dtype=torch.float32)
+        # there is only one class
+        labels = torch.ones((num_objs,), dtype=torch.int64)
+        masks = torch.as_tensor(masks, dtype=torch.uint8)
+
+        image_id = torch.tensor([idx])
+        area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
+        # suppose all instances are not crowd
+        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
+
+        target = {}
+        target["boxes"] = boxes
+        target["labels"] = labels
+        target["image_id"] = image_id
+        target["area"] = area
+        target["iscrowd"] = iscrowd
+
+        if self.transforms is not None:
+            img, target = self.transforms(img, target)
+
+        return img, target
 
 
 class PennFudanDataset(object):
@@ -120,7 +207,69 @@ def get_transform(train):
     return T.Compose(transforms)
 
 
-def main():
+def main(unused_argv):
+
+    start_time = time.time()
+
+    use_s3 = True if flags.FLAGS.s3_bucket_name is not None else False
+
+    if use_s3:
+        if not s3_util.s3_bucket_exists(flags.FLAGS.s3_bucket_name):
+            use_s3 = False
+            print(
+                "Bucket: %s either does not exist or you do not have access to it"
+                % flags.FLAGS.s3_bucket_name
+            )
+        else:
+            print(
+                "Bucket: %s exists and you have access to it"
+                % flags.FLAGS.s3_bucket_name
+            )
+
+    if use_s3:
+        # Download new images from s3
+        s3_images = s3_util.s3_get_object_names_from_dir(
+            flags.FLAGS.s3_bucket_name,
+            flags.FLAGS.s3_image_dir,
+            flags.FLAGS.image_file_type,
+        )
+        s3_util.s3_download_files(
+            flags.FLAGS.s3_bucket_name, s3_images, flags.FLAGS.local_image_dir
+        )
+
+        # Download any nest annotation files from s3
+        s3_annotations = s3_util.s3_get_object_names_from_dir(
+            flags.FLAGS.s3_bucket_name,
+            flags.FLAGS.s3_annotation_dir,
+            flags.FLAGS.annotation_file_type,
+        )
+
+        s3_util.s3_download_files(
+            flags.FLAGS.s3_bucket_name,
+            s3_annotations,
+            flags.FLAGS.local_annotation_dir,
+        )
+
+        # Download any new manifests files from s3
+        s3_manifests = s3_util.s3_get_object_names_from_dir(
+            flags.FLAGS.s3_bucket_name, flags.FLAGS.s3_manifest_dir,
+        )
+
+        s3_util.s3_download_files(
+            flags.FLAGS.s3_bucket_name, s3_manifests, flags.FLAGS.local_manifest_dir
+        )
+
+    if not os.path.isfile(flags.FLAGS.label_file_path):
+        print("Invalid category labels path.")
+        return
+
+    # read in the category labels
+    category_labels = open(flags.FLAGS.label_file_path).read().splitlines()
+
+    if len(category_labels) == 0:
+        print("No label categories found")
+        return
+
     # train on the GPU or on the CPU, if a GPU is not available
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -180,4 +329,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    app.run(main)
