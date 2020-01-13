@@ -1,3 +1,5 @@
+absl-py
+boto3
 numpy
 matplotlib
 pycocotools

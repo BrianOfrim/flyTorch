@@ -1,5 +1,10 @@
 # flyTorch
 
+Heavily inspired by:
+Torchvision detection reference: https://github.com/pytorch/vision/tree/master/references/detection
+Sample code from the TorchVision 0.3 Object Detection Finetuning Tutorial http://pytorch.org/tutorials/intermediate/torchvision_tutorial.html
+
+# Getting Started
 Modify the pycocotools site-package's cocoeval.py file's functions setDetParams and setKpParams by changing:
 np.round(...) to np.round(...).astype(int) to ensure that the rounded value is an integer.
 For pycocotools==2.0.0 this change should be applied to lines:  
