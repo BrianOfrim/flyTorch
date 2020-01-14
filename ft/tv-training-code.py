@@ -3,6 +3,7 @@
 
 import os
 import time
+from typing import List
 
 from absl import app, flags
 import numpy as np
@@ -15,6 +16,14 @@ from engine import train_one_epoch, evaluate
 import utils
 import transforms as T
 
+IMAGE_DIR_NAME = "images"
+ANNOTATION_DIR_NAME = "annotations"
+MANIFEST_DIR_NAME = "manifests"
+
+IMAGE_FILE_TYPE = "jpg"
+ANNOTATION_FILE_TYPE = "xml"
+MANIFEST_FILE_TYPE = "txt"
+
 flags.DEFINE_string(
     "label_file_path",
     "../data/labels.txt",
@@ -22,50 +31,39 @@ flags.DEFINE_string(
 )
 
 flags.DEFINE_string(
-    "local_image_dir", "../data/images", "Local directory of the image files to label."
-)
-
-flags.DEFINE_string(
-    "local_annotation_dir",
-    "../data/annotations",
-    "Local directory of the image annotations",
-)
-
-flags.DEFINE_string(
-    "local_manifest_dir",
-    "../data/manifests/",
-    "Local directory of the annotated image manifests",
+    "local_data_dir", "../data", "Local directory of the image files to label."
 )
 
 flags.DEFINE_string(
     "s3_bucket_name", None, "S3 bucket to retrieve images from and upload manifest to."
 )
 
-flags.DEFINE_string("s3_image_dir", "data/images/", "Prefix of the s3 image objects.")
-
-flags.DEFINE_string(
-    "s3_annotation_dir",
-    "data/annotations/",
-    "Prefix of the s3 image annotation objects",
-)
-flags.DEFINE_string(
-    "s3_manifest_dir",
-    "data/manifests/",
-    "Prefix of the s3 image annotation manifest objects",
-)
+flags.DEFINE_string("s3_data_dir", "data", "Prefix of the s3 data objects.")
 
 
 class ODDataSet(object):
-    def __init__(self, root, transforms):
-        self.root = root
-        self.transforms = transforms
+    def __init__(
+        self, data_root, transforms, labels: List[str], manifest_file_path: str
+    ):
 
-        self.imgs = list(sorted(os.listdir(os.path.join(root, "images"))))
-        self.annotations = list(sorted(os.listdir(os.path.join(root, "annotations"))))
+        self.labels = labels
+        self.data_root = data_root
+        self.transforms = transforms
+        manifest_items = (
+            open(os.path.join(self.data_root, MANIFEST_DIR_NAME)).read().splitlines()
+        )
+        manifest_items = [item.strip() for item in manifest_items]
+        # Filter out Invalid images
+        manifest_items = [
+            item for item in manifest_items if item.split(",")[1].lower() != "Invalid"
+        ]
+
+        self.images = [item.split(",")[0] for item in manifest_items]
+        self.annotations = [item.split(",")[1] for item in manifest_items]
 
     def __getitem__(self, idx):
         # load images ad masks
-        img_path = os.path.join(self.root, "PNGImages", self.imgs[idx])
+        img_path = os.path.join(self.data_root, IMAGE_DIR_NAME, self.images[idx])
         img = Image.open(img_path).convert("RGB")
 
         num_objs = len(obj_ids)
@@ -230,33 +228,38 @@ def main(unused_argv):
         # Download new images from s3
         s3_images = s3_util.s3_get_object_names_from_dir(
             flags.FLAGS.s3_bucket_name,
-            flags.FLAGS.s3_image_dir,
+            flags.FLAGS.s3_data_dir + "/" + IMAGE_DIR_NAME,
             flags.FLAGS.image_file_type,
         )
         s3_util.s3_download_files(
-            flags.FLAGS.s3_bucket_name, s3_images, flags.FLAGS.local_image_dir
+            flags.FLAGS.s3_bucket_name,
+            s3_images,
+            os.path.join(flags.FLAGS.local_data_dir, IMAGE_DIR_NAME),
         )
 
         # Download any nest annotation files from s3
         s3_annotations = s3_util.s3_get_object_names_from_dir(
             flags.FLAGS.s3_bucket_name,
-            flags.FLAGS.s3_annotation_dir,
+            flags.FLAGS.s3_data_dir + "/" + ANNOTATION_DIR_NAME,
             flags.FLAGS.annotation_file_type,
         )
 
         s3_util.s3_download_files(
             flags.FLAGS.s3_bucket_name,
             s3_annotations,
-            flags.FLAGS.local_annotation_dir,
+            os.path.join(flags.FLAGS.local_data_dir, ANNOTATION_DIR_NAME),
         )
 
         # Download any new manifests files from s3
         s3_manifests = s3_util.s3_get_object_names_from_dir(
-            flags.FLAGS.s3_bucket_name, flags.FLAGS.s3_manifest_dir,
+            flags.FLAGS.s3_bucket_name,
+            flags.FLAGS.s3_data_dir + "/" + MANIFEST_DIR_NAME,
         )
 
         s3_util.s3_download_files(
-            flags.FLAGS.s3_bucket_name, s3_manifests, flags.FLAGS.local_manifest_dir
+            flags.FLAGS.s3_bucket_name,
+            s3_manifests,
+            os.path.join(flags.FLAGS.local_data_dir, MANIFEST_DIR_NAME),
         )
 
     if not os.path.isfile(flags.FLAGS.label_file_path):
@@ -265,6 +268,7 @@ def main(unused_argv):
 
     # read in the category labels
     category_labels = open(flags.FLAGS.label_file_path).read().splitlines()
+    category_labels = [label.strip() for label in category_labels]
 
     if len(category_labels) == 0:
         print("No label categories found")
