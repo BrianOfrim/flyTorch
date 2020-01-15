@@ -90,7 +90,7 @@ class ODDataSet(object):
         labels = [self.labels.index(b.label) for b in annotation_boxes]
         labels = torch.as_tensor(labels, dtype=torch.int64)
 
-        image_id = torch.as_tensor([idx])
+        image_id = torch.tensor([idx])
 
         area = [b.get_area() for b in annotation_boxes]
         area = torch.as_tensor(area, dtype=torch.float32)
@@ -118,9 +118,6 @@ def get_model_instance_detection(num_classes):
     # load a model pre-trained pre-trained on COCO
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
 
-    # replace the classifier with a new one, that has
-    # num_classes which is user-defined
-    num_classes = 2  # 1 class (person) + background
     # get number of input features for the classifier
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     # replace the pre-trained head with a new one
@@ -253,7 +250,6 @@ def main(unused_argv):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     # Add one class for the background
-
     num_classes = len(labels) + 1
     # use our dataset and defined transformations
     dataset = ODDataSet(
