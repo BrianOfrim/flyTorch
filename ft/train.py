@@ -7,7 +7,6 @@ from typing import List
 import re
 
 from absl import app, flags
-import numpy as np
 from PIL import Image
 import torch
 import torchvision
@@ -22,10 +21,12 @@ import pascal_voc_parser
 IMAGE_DIR_NAME = "images"
 ANNOTATION_DIR_NAME = "annotations"
 MANIFEST_DIR_NAME = "manifests"
+MODEL_STATE_ROOT_DIR = "modelState"
 
 IMAGE_FILE_TYPE = "jpg"
 ANNOTATION_FILE_TYPE = "xml"
 MANIFEST_FILE_TYPE = "txt"
+MODEL_STATE_FILE_NAME = "modelState.pt"
 
 INVALID_ANNOTATION_FILE_IDENTIFIER = "invalid"
 
@@ -44,6 +45,10 @@ flags.DEFINE_string(
 )
 
 flags.DEFINE_string("s3_data_dir", "data", "Prefix of the s3 data objects.")
+
+# Hyperparameters
+
+flags.DEFINE_integer("num_epochs", 10, "The number of epochs to train the model for.")
 
 
 class ODDataSet(object):
@@ -117,7 +122,6 @@ class ODDataSet(object):
 def get_model_instance_detection(num_classes):
     # load a model pre-trained pre-trained on COCO
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
-
     # get number of input features for the classifier
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     # replace the pre-trained head with a new one
@@ -167,9 +171,24 @@ def get_newest_manifest_path(manifest_dir_path: str) -> str:
     )
 
 
+def create_output_dir(dir_name) -> bool:
+    if not os.path.isdir(dir_name) or not os.path.exists(dir_name):
+        print("Creating output directory: %s" % dir_name)
+        try:
+            os.makedirs(dir_name)
+        except OSError:
+            print("Creation of the directory %s failed" % dir_name)
+            return False
+        else:
+            print("Successfully created the directory %s " % dir_name)
+            return True
+    else:
+        return True
+
+
 def main(unused_argv):
 
-    start_time = time.time()
+    start_time = int(time.time())
 
     use_s3 = True if flags.FLAGS.s3_bucket_name is not None else False
 
@@ -287,15 +306,14 @@ def main(unused_argv):
     # )
 
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=2, shuffle=True, num_workers=1, collate_fn=utils.collate_fn
+        dataset, batch_size=4, shuffle=True, num_workers=4, collate_fn=utils.collate_fn
     )
 
     data_loader_test = torch.utils.data.DataLoader(
         dataset_test,
         batch_size=1,
         shuffle=False,
-        # num_workers=4,
-        num_workers=1,
+        num_workers=4,
         collate_fn=utils.collate_fn,
     )
 
@@ -311,8 +329,9 @@ def main(unused_argv):
     # and a learning rate scheduler
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
-    # let's train it for 10 epochs
-    num_epochs = 10
+    num_epochs = flags.FLAGS.num_epochs
+
+    print("Training for %d epochs" % num_epochs)
 
     for epoch in range(num_epochs):
         # train for one epoch, printing every 10 iterations
@@ -322,7 +341,29 @@ def main(unused_argv):
         # evaluate on the test dataset
         evaluate(model, data_loader_test, device=device)
 
-    print("That's it!")
+    model_state_dir = os.path.join(
+        flags.FLAGS.local_data_dir, MODEL_STATE_ROOT_DIR, str(start_time)
+    )
+
+    # Create model state directory if it does not exist yet
+    create_output_dir(model_state_dir)
+
+    model_state_file_path = os.path.join(model_state_dir, MODEL_STATE_FILE_NAME)
+
+    # Save the model state to a file
+    torch.save(model.state_dict(), model_state_file_path)
+
+    print("Model state saved at: %s" % model_state_file_path)
+
+    if use_s3:
+        # Send the saved model to S3
+        s3_util.upload_files(
+            flags.FLAGS.s3_bucket_name,
+            [model_state_file_path],
+            "/".join([flags.FLAGS.s3_data_dir, MODEL_STATE_ROOT_DIR, str(start_time)]),
+        )
+
+    print("Training complete")
 
 
 if __name__ == "__main__":
