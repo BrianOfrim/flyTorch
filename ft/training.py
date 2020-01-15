@@ -27,6 +27,8 @@ IMAGE_FILE_TYPE = "jpg"
 ANNOTATION_FILE_TYPE = "xml"
 MANIFEST_FILE_TYPE = "txt"
 
+INVALID_ANNOTATION_FILE_IDENTIFIER = "invalid"
+
 flags.DEFINE_string(
     "label_file_path",
     "../data/labels.txt",
@@ -56,8 +58,11 @@ class ODDataSet(object):
         ]
         # Filter out Invalid images
         manifest_items = [
-            item for item in manifest_items if item.split(",")[1].lower() != "Invalid"
+            item
+            for item in manifest_items
+            if item.split(",")[1].lower() != INVALID_ANNOTATION_FILE_IDENTIFIER
         ]
+
         self.images = [
             os.path.join(self.data_root, IMAGE_DIR_NAME, item.split(",")[0])
             for item in manifest_items
