@@ -249,6 +249,8 @@ def main(unused_argv):
     # train on the GPU or on the CPU, if a GPU is not available
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
+    print("Using device: ", device)
+
     # Add one class for the background
     num_classes = len(labels) + 1
     # use our dataset and defined transformations
@@ -314,7 +316,7 @@ def main(unused_argv):
 
     for epoch in range(num_epochs):
         # train for one epoch, printing every 10 iterations
-        train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=5)
+        train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
         # update the learning rate
         lr_scheduler.step()
         # evaluate on the test dataset

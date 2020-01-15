@@ -26,7 +26,6 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq):
 
     for images, targets in metric_logger.log_every(data_loader, print_freq, header):
         images = list(image.to(device) for image in images)
-        print(targets)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
         loss_dict = model(images, targets)
@@ -81,11 +80,13 @@ def evaluate(model, data_loader, device):
     iou_types = _get_iou_types(model)
     coco_evaluator = CocoEvaluator(coco, iou_types)
 
-    for image, targets in metric_logger.log_every(data_loader, 20, header):
+    for image, targets in metric_logger.log_every(data_loader, 100, header):
         image = list(img.to(device) for img in image)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
-        # torch.cuda.synchronize()
+        if device == torch.device("cuda"):
+            torch.cuda.synchronize()
+
         model_time = time.time()
         outputs = model(image)
 

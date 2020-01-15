@@ -20,5 +20,3 @@ dist
 # wheel metadata
 pip-wheel-metadata/*
 
-ft/PennFudanPed
-
