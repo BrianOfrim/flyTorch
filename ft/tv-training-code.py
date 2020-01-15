@@ -186,7 +186,7 @@ def main(unused_argv):
         s3_images = s3_util.s3_get_object_names_from_dir(
             flags.FLAGS.s3_bucket_name,
             flags.FLAGS.s3_data_dir + "/" + IMAGE_DIR_NAME,
-            flags.FLAGS.image_file_type,
+            IMAGE_FILE_TYPE,
         )
         s3_util.s3_download_files(
             flags.FLAGS.s3_bucket_name,
@@ -198,7 +198,7 @@ def main(unused_argv):
         s3_annotations = s3_util.s3_get_object_names_from_dir(
             flags.FLAGS.s3_bucket_name,
             flags.FLAGS.s3_data_dir + "/" + ANNOTATION_DIR_NAME,
-            flags.FLAGS.annotation_file_type,
+            ANNOTATION_FILE_TYPE,
         )
 
         s3_util.s3_download_files(
@@ -211,6 +211,7 @@ def main(unused_argv):
         s3_manifests = s3_util.s3_get_object_names_from_dir(
             flags.FLAGS.s3_bucket_name,
             flags.FLAGS.s3_data_dir + "/" + MANIFEST_DIR_NAME,
+            MANIFEST_FILE_TYPE,
         )
 
         s3_util.s3_download_files(
