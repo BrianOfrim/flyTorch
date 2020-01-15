@@ -105,6 +105,9 @@ class ODDataSet(object):
 
         return img, target
 
+    def __len__(self):
+        return len(self.images)
+
 
 def get_model_instance_detection(num_classes):
     # load a model pre-trained pre-trained on COCO
