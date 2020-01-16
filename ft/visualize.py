@@ -95,7 +95,7 @@ class ODDataSet(object):
 
         labels = [self.labels.index(b.label) for b in annotation_boxes]
         # add the background as the first class
-        labels.append(0, "background")
+        labels.insert(0, "background")
 
         labels = torch.as_tensor(labels, dtype=torch.int64)
 

@@ -257,7 +257,7 @@ def main(unused_argv):
         return
 
     # add the background class
-    labels.append(0, "background")
+    labels.insert(0, "background")
 
     newest_manifest_file = get_newest_manifest_path(
         os.path.join(flags.FLAGS.local_data_dir, MANIFEST_DIR_NAME)
