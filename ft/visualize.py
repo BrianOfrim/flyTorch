@@ -242,7 +242,7 @@ def main(unused_argv):
     with torch.no_grad():
         for i in range(len(dataset)):
             image, target = dataset[i]
-            print(image.shape)
+            print(image)
             print(target)
 
             model_time = time.time()
