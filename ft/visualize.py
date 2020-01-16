@@ -5,12 +5,19 @@ from typing import List
 
 from absl import app, flags
 from PIL import Image
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import numpy as np
 import torch
 import torchvision
+import torchvision.transforms.functional as F
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 import transforms as T
 import pascal_voc_parser
+
+matplotlib.use("TKAgg")
 
 IMAGE_DIR_NAME = "images"
 ANNOTATION_DIR_NAME = "annotations"
@@ -39,6 +46,10 @@ flags.DEFINE_string(
 )
 
 flags.DEFINE_string("model_path", None, "The model to load. Default is newest.")
+
+flags.DEFINE_float(
+    "threshold", 0.15, "The threshold above which to display predicted bounding boxes"
+)
 
 
 class ODDataSet(object):
@@ -83,6 +94,9 @@ class ODDataSet(object):
         # there is only one class
 
         labels = [self.labels.index(b.label) for b in annotation_boxes]
+        # add the background as the first class
+        labels.append(0, "background")
+
         labels = torch.as_tensor(labels, dtype=torch.int64)
 
         image_id = torch.tensor([idx])
@@ -172,6 +186,45 @@ def get_newest_saved_model_path(model_dir_path: str) -> str:
     return model_file_path
 
 
+def draw_bboxes(
+    ax, bboxes, label_indices, label_names, label_colors, label_scores=None
+):
+    for box_index, (box, label_index) in enumerate(zip(bboxes, label_indices)):
+        height = box[3] - box[1]
+        width = box[2] - box[0]
+        lower_left = (box[0], box[1])
+        rect = patches.Rectangle(
+            lower_left,
+            width,
+            height,
+            linewidth=2,
+            edgecolor=label_colors[label_index],
+            facecolor="none",
+        )
+        ax.add_patch(rect)
+        label_string = ""
+        if label_scores is None:
+            label_string = label_names[label_index]
+        else:
+            label_string = "%s [%.2f]" % (
+                label_names[label_index],
+                label_scores[box_index],
+            )
+        ax.text(
+            box[0],
+            box[1],
+            label_string,
+            bbox=dict(
+                facecolor=label_colors[label_index],
+                alpha=0.5,
+                pad=1,
+                edgecolor=label_colors[label_index],
+            ),
+            fontsize=10,
+            color="white",
+        )
+
+
 def main(unused_argv):
 
     if not os.path.isfile(flags.FLAGS.label_file_path):
@@ -185,6 +238,9 @@ def main(unused_argv):
     if len(labels) == 0:
         print("No labels are present in %s" % flags.FLAGS.label_file_path)
         return
+
+    print("Labels found:")
+    print(labels)
 
     manifest_file_path = (
         flags.FLAGS.manifest_path
@@ -239,12 +295,19 @@ def main(unused_argv):
     # move model to the right device
     model.to(device)
 
-    with torch.no_grad():
-        for i in range(len(dataset)):
-            image, target = dataset[i]
-            print(image)
-            print(target)
+    # create plots
+    fig, (ground_truth_ax, inference_ax) = plt.subplots(1, 2)
 
+    # plt.ion()
+
+    ground_truth_ax.set_title("Ground Truth")
+    inference_ax.set_title("Inference")
+
+    label_colors = plt.get_cmap("hsv")(np.linspace(0, 0.9, len(labels)))
+
+    with torch.no_grad():
+        for data in dataset:
+            image, target = data
             model_time = time.time()
             outputs = model([image])
             outputs = [
@@ -252,7 +315,45 @@ def main(unused_argv):
             ]
             model_time = time.time() - model_time
             print("Inference time = ", model_time)
-            print(outputs)
+
+            display_image_base = F.to_pil_image(image)
+
+            ground_truth_ax.clear()
+            inference_ax.clear()
+
+            ground_truth_ax.imshow(display_image_base)
+            inference_ax.imshow(display_image_base)
+
+            draw_bboxes(
+                ground_truth_ax, target["boxes"], target["labels"], labels, label_colors
+            )
+
+            # filter out the background labels and scores bellow threshold
+            filtered_output = [
+                (
+                    outputs[0]["boxes"][j],
+                    outputs[0]["labels"][j],
+                    outputs[0]["scores"][j],
+                )
+                for j in range(len(outputs[0]["boxes"]))
+                if outputs[0]["scores"][j] > flags.FLAGS.threshold
+                and outputs[0]["labels"][j] > 0
+            ]
+
+            inference_boxes, inference_labels, inference_scores = (
+                zip(*filtered_output) if len(filtered_output) > 0 else ([], [], [])
+            )
+
+            draw_bboxes(
+                inference_ax,
+                inference_boxes,
+                inference_labels,
+                labels,
+                label_colors,
+                inference_scores,
+            )
+
+            plt.pause(0.001)
 
     # evaluate on the test dataset
     #    evaluate(model, data_loader, device=device)

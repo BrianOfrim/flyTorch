@@ -255,6 +255,10 @@ def main(unused_argv):
     if len(labels) == 0:
         print("No labels are present in %s" % flags.FLAGS.label_file_path)
         return
+
+    # add the background class
+    labels.append(0, "background")
+
     newest_manifest_file = get_newest_manifest_path(
         os.path.join(flags.FLAGS.local_data_dir, MANIFEST_DIR_NAME)
     )
@@ -270,8 +274,7 @@ def main(unused_argv):
 
     print("Using device: ", device)
 
-    # Add one class for the background
-    num_classes = len(labels) + 1
+    num_classes = len(labels)
     # use our dataset and defined transformations
     dataset = ODDataSet(
         flags.FLAGS.local_data_dir,
