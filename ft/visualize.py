@@ -48,7 +48,7 @@ flags.DEFINE_string(
 flags.DEFINE_string("model_path", None, "The model to load. Default is newest.")
 
 flags.DEFINE_float(
-    "threshold", 0.15, "The threshold above which to display predicted bounding boxes"
+    "threshold", 0.5, "The threshold above which to display predicted bounding boxes"
 )
 
 
@@ -209,7 +209,7 @@ def draw_bboxes(
             )
         ax.text(
             box[0],
-            box[1],
+            box[1] - 10,
             label_string,
             bbox=dict(
                 facecolor=label_colors[label_index],
@@ -298,11 +298,6 @@ def main(unused_argv):
     # create plots
     fig, (ground_truth_ax, inference_ax) = plt.subplots(1, 2)
 
-    # plt.ion()
-
-    ground_truth_ax.set_title("Ground Truth")
-    inference_ax.set_title("Inference")
-
     label_colors = plt.get_cmap("hsv")(np.linspace(0, 0.9, len(labels)))
 
     with torch.no_grad():
@@ -320,6 +315,9 @@ def main(unused_argv):
 
             ground_truth_ax.clear()
             inference_ax.clear()
+
+            ground_truth_ax.set_title("Ground Truth")
+            inference_ax.set_title("Inference")
 
             ground_truth_ax.imshow(display_image_base)
             inference_ax.imshow(display_image_base)
