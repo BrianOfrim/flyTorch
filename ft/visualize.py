@@ -94,9 +94,6 @@ class ODDataSet(object):
         # there is only one class
 
         labels = [self.labels.index(b.label) for b in annotation_boxes]
-        # add the background as the first class
-        labels.insert(0, "background")
-
         labels = torch.as_tensor(labels, dtype=torch.int64)
 
         image_id = torch.tensor([idx])
@@ -239,6 +236,9 @@ def main(unused_argv):
         print("No labels are present in %s" % flags.FLAGS.label_file_path)
         return
 
+    # Add the background as the first class
+    labels.insert(0, "background")
+
     print("Labels found:")
     print(labels)
 
@@ -272,7 +272,7 @@ def main(unused_argv):
     print("Using device: ", device)
 
     # Add one class for the background
-    num_classes = len(labels) + 1
+    num_classes = len(labels)
     # use our dataset and defined transformations
     dataset = ODDataSet(
         flags.FLAGS.local_data_dir,
