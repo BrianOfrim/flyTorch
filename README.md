@@ -1,5 +1,7 @@
 # flyTorch
 
+**This project is now deprecated, it's functionality has been added to https://github.com/BrianOfrim/boja**
+
 Heavily inspired by:
 Torchvision detection reference: https://github.com/pytorch/vision/tree/master/references/detection
 Sample code from the TorchVision 0.3 Object Detection Finetuning Tutorial http://pytorch.org/tutorials/intermediate/torchvision_tutorial.html
